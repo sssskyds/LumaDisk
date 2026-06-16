@@ -1,0 +1,39 @@
+name: Build LumaDisk (Windows)
+on:
+  push: { branches: [ main, master ] }
+  pull_request: { branches: [ main, master ] }
+  workflow_dispatch:
+jobs:
+  build-windows:
+    runs-on: windows-2025
+    steps:
+    - uses: actions/checkout@v4
+    - uses: jurplel/install-qt-action@v4
+      with: { version: '6.7.0', host: 'windows', target: 'desktop', arch: 'win64_msvc2019_64', cache: true }
+    - uses: ilammy/msvc-dev-cmd@v1
+      with: { arch: x64 }
+    - shell: pwsh
+      run: cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$env:QT_ROOT_DIR"
+    - shell: pwsh
+      run: cmake --build build --config Release --parallel
+    - shell: pwsh
+      run: |
+        New-Item -ItemType Directory -Force -Path deploy | Out-Null
+        Copy-Item build\Release\LumaDisk.exe deploy\LumaDisk.exe -Force
+        & "$env:QT_ROOT_DIR\bin\windeployqt.exe" --release --no-translations --no-system-d3d-compiler deploy\LumaDisk.exe
+    - shell: pwsh
+      run: |
+        $sevenZip="C:\Program Files\7-Zip\7z.exe"; $sfx="C:\Program Files\7-Zip\7z.sfx"
+        Push-Location deploy; & $sevenZip a -t7z -mx=9 ..\LumaDisk-packed.7z *; Pop-Location
+        @'
+        ;!@Install@!UTF-8!
+        Title="LumaDisk"
+        RunProgram="LumaDisk.exe"
+        GUIMode="2"
+        ;!@InstallEnd@!
+        '@ | Set-Content sfx-config.txt -Encoding UTF8
+        cmd /c copy /b "$sfx" + sfx-config.txt + LumaDisk-packed.7z LumaDisk-SingleFile.exe
+    - uses: actions/upload-artifact@v4
+      with: { name: LumaDisk-SingleFile-Windows, path: LumaDisk-SingleFile.exe }
+    - uses: actions/upload-artifact@v4
+      with: { name: LumaDisk-Portable-Windows, path: deploy/ }
